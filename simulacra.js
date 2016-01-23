@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.5.4
+ * Version 0.6.0
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -21,7 +21,7 @@ module.exports = defineProperties
  * @param {Node} parentNode
  */
 function defineProperties (scope, obj, def, parentNode) {
-  var store, properties, i, j
+  var i, j, store, properties
 
   if (typeof obj !== 'object')
     throw new TypeError(
@@ -59,7 +59,14 @@ function defineProperties (scope, obj, def, parentNode) {
 
       // Special case for binding same node as parent.
       if (branch.__isBoundToParent) {
-        if (mutator) mutator(parentNode, x, store[key])
+        if (mutator) mutator({
+          object: obj,
+          key: key,
+          node: parentNode,
+          value: x,
+          previousValue: store[key]
+          // Note that index is omitted.
+        })
 
         // Need to qualify this check for non-empty value.
         else if (definition && x != null)
@@ -134,7 +141,14 @@ function defineProperties (scope, obj, def, parentNode) {
       delete previousValues[i]
 
       if (activeNode) {
-        if (mutator) mutator(activeNode, null, previousValue, i)
+        if (mutator) mutator({
+          object: obj,
+          key: key,
+          node: activeNode,
+          value: null,
+          previousValue: previousValue,
+          index: i
+        })
         branch.marker.parentNode.removeChild(activeNode)
         delete activeNodes[i]
       }
@@ -153,12 +167,26 @@ function defineProperties (scope, obj, def, parentNode) {
 
       if (mutator) {
         if (activeNode) {
-          mutator(activeNode, value, previousValue, i)
+          mutator({
+            object: obj,
+            key: key,
+            node: activeNode,
+            value: value,
+            previousValue: previousValue,
+            index: i
+          })
           return null
         }
 
         node = branch.node.cloneNode(true)
-        mutator(node, value, previousValue, i)
+        mutator({
+          object: obj,
+          key: key,
+          node: node,
+          value: value,
+          previousValue: previousValue,
+          index: i
+        })
       }
 
       else if (definition) {
@@ -327,7 +355,7 @@ function simulacra (a, b) {
   var Node = scope ? scope.Node : window.Node
 
   if (a instanceof Node) return define(scope, a, b)
-  if (typeof a === 'object') return bind(scope, a, b)
+  if (typeof a === 'object' && a !== null) return bind(scope, a, b)
 
   throw new TypeError('First argument must be either ' +
     'a DOM Node or an Object.')
@@ -348,7 +376,7 @@ function define (scope, node, def) {
   // Although WeakSet would work here, WeakMap has better browser support.
   var seen = new WeakMap()
 
-  var i, j, keys, branch, boundNode
+  var i, j, key, keys, branch, boundNode
 
   if (typeof def === 'function')
     obj.mutator = def
@@ -357,14 +385,15 @@ function define (scope, node, def) {
     obj.definition = def
 
     for (i = 0, keys = Object.keys(def), j = keys.length; i < j; i++) {
-      branch = def[keys[i]]
+      key = keys[i]
+      branch = def[key]
       boundNode = branch.node
 
       // Special case for binding to parent node.
       if (node === boundNode) {
         branch.__isBoundToParent = true
         if (branch.mutator && branch.mutator.__isDefault)
-          branch.mutator = noop(keys[i])
+          branch.mutator = noop(key)
         continue
       }
 
@@ -374,7 +403,7 @@ function define (scope, node, def) {
 
       if (!seen.get(boundNode)) seen.set(boundNode, true)
       else throw new Error('Can not bind multiple keys to the same child ' +
-        'DOM Node. Collision found on key "' + keys[i] + '".')
+        'DOM Node. Collision found on key "' + key + '".')
     }
   }
 
@@ -420,13 +449,36 @@ function bind (scope, obj, def) {
 
 
 // Default DOM mutation functions.
-function replaceText (node, value) { node.textContent = value }
-function replaceValue (node, value) { node.value = value }
-function replaceChecked (node, value) { node.checked = value }
 
-replaceText.__isDefault = true
-replaceValue.__isDefault = true
-replaceChecked.__isDefault = true
+function replaceText (context) {
+  context.node.textContent = context.value
+}
+
+function replaceValue (context) {
+  if (context.previousValue === null)
+    context.node.addEventListener('change', function () {
+      context.object[context.key] = context.node.value
+    })
+
+  if (context.node.value !== context.value)
+    context.node.value = context.value
+}
+
+function replaceChecked (context) {
+  if (context.previousValue === null)
+    context.node.addEventListener('change', function () {
+      context.object[context.key] = context.node.checked
+    })
+
+  if (context.node.checked !== context.value)
+    context.node.checked = context.value
+}
+
+// Private static property, used for checking parent binding function.
+replaceText.__isDefault =
+  replaceValue.__isDefault =
+  replaceChecked.__isDefault =
+  true
 
 function noop (key) {
   return function () {
