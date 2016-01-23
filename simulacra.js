@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.6.0
+ * Version 0.6.1
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -21,7 +21,7 @@ module.exports = defineProperties
  * @param {Node} parentNode
  */
 function defineProperties (scope, obj, def, parentNode) {
-  var i, j, store, properties
+  var store, property
 
   if (typeof obj !== 'object')
     throw new TypeError(
@@ -30,8 +30,7 @@ function defineProperties (scope, obj, def, parentNode) {
   // Using the closure here to store private object.
   store = {}
 
-  properties = Object.keys(def)
-  for (i = 0, j = properties.length; i < j; i++) define(properties[i])
+  for (property in def) define(property)
 
   function define (key) {
     var initialValue = obj[key]
@@ -310,27 +309,27 @@ module.exports = findNodes
  *
  * @param {*}
  * @param {Node} node
- * @param {Object} definition
+ * @param {Object} def
  * @return {WeakMap}
  */
-function findNodes (scope, node, definition) {
+function findNodes (scope, node, def) {
   var document = scope ? scope.document : window.document
   var NodeFilter = scope ? scope.NodeFilter : window.NodeFilter
   var treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT)
-  var keys = Object.keys(definition)
   var map = new WeakMap()
   var nodes = []
-  var i, j
+  var i, j, key, currentNode
 
-  for (i = 0, j = keys.length; i < j; i++)
-    nodes[nodes.length] = definition[keys[i]].node
+  for (key in def) nodes.push(def[key].node)
 
-  while (treeWalker.nextNode() && j)
-    for (i = 0, j = nodes.length; i < j; i++)
-      if (treeWalker.currentNode.isEqualNode(nodes[i])) {
-        map.set(nodes[i], treeWalker.currentNode)
+  while (treeWalker.nextNode() && nodes.length)
+    for (i = 0, j = nodes.length; i < j; i++) {
+      currentNode = nodes[i]
+      if (treeWalker.currentNode.isEqualNode(currentNode)) {
+        map.set(currentNode, treeWalker.currentNode)
         nodes.splice(i, 1)
       }
+    }
 
   return map
 }
@@ -376,7 +375,7 @@ function define (scope, node, def) {
   // Although WeakSet would work here, WeakMap has better browser support.
   var seen = new WeakMap()
 
-  var i, j, key, keys, branch, boundNode
+  var key, branch, boundNode
 
   if (typeof def === 'function')
     obj.mutator = def
@@ -384,8 +383,7 @@ function define (scope, node, def) {
   else if (typeof def === 'object') {
     obj.definition = def
 
-    for (i = 0, keys = Object.keys(def), j = keys.length; i < j; i++) {
-      key = keys[i]
+    for (key in def) {
       branch = def[key]
       boundNode = branch.node
 
@@ -505,12 +503,10 @@ module.exports = processNodes
  */
 function processNodes (scope, node, def) {
   var document = scope ? scope.document : window.document
-  var keys = Object.keys(def)
   var map = findNodes(scope, node, def)
-  var i, j, branch, key, mirrorNode, marker, parent
+  var branch, key, mirrorNode, marker, parent
 
-  for (i = 0, j = keys.length; i < j; i++) {
-    key = keys[i]
+  for (key in def) {
     branch = def[key]
     if (branch.__isBoundToParent) continue
     mirrorNode = map.get(branch.node)
