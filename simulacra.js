@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.7.1
+ * Version 0.8.0
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -362,6 +362,9 @@ var defineProperties = require('./define_properties')
 
 module.exports = simulacra
 
+simulacra.define = define
+simulacra.bind = bind
+
 
 /**
  * Dynamic dispatch function.
@@ -370,11 +373,10 @@ module.exports = simulacra
  * @param {Function|Object}
  */
 function simulacra (a, b) {
-  var scope = this
-  var Node = scope ? scope.Node : window.Node
+  var Node = this ? this.Node : window.Node
 
-  if (a instanceof Node) return define(scope, a, b)
-  if (typeof a === 'object' && a !== null) return bind(scope, a, b)
+  if (a instanceof Node) return define(a, b)
+  if (typeof a === 'object' && a !== null) return bind.call(this, a, b)
 
   throw new TypeError('First argument must be either ' +
     'a DOM Node or an Object.')
@@ -384,11 +386,10 @@ function simulacra (a, b) {
 /**
  * Define a binding.
  *
- * @param {*}
- * @param {String|Node}
+ * @param {Node}
  * @param {Function|Object}
  */
-function define (scope, node, def) {
+function define (node, def) {
   // Memoize the selected node.
   var obj = { node: node }
 
@@ -442,13 +443,12 @@ function define (scope, node, def) {
 /**
  * Bind an object to a Node.
  *
- * @param {*}
  * @param {Object}
  * @param {Object}
  * @return {Node}
  */
-function bind (scope, obj, def) {
-  var Node = scope ? scope.Node : window.Node, node
+function bind (obj, def) {
+  var Node = this ? this.Node : window.Node, node
 
   if (Array.isArray(obj))
     throw new TypeError('First argument must be a singular object.')
@@ -459,8 +459,8 @@ function bind (scope, obj, def) {
   if (typeof def.definition !== 'object')
     throw new TypeError('Top-level binding must be an object.')
 
-  node = processNodes(scope, def.node.cloneNode(true), def.definition)
-  defineProperties(scope, obj, def.definition, node)
+  node = processNodes(this, def.node.cloneNode(true), def.definition)
+  defineProperties(this, obj, def.definition, node)
 
   return node
 }
