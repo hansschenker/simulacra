@@ -1,32 +1,13 @@
 /*!
  * Simulacra.js
- * Version 0.8.0
+ * Version 0.9.1
  * MIT License
  * https://github.com/0x8890/simulacra
  */
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 'use strict'
 
-/**
- * Like `Object.assign`, but faster and more restricted in what it does.
- *
- * @param {Object} target
- * @param {Object} source
- * @return {Object}
- */
-module.exports = function assign (target, source) {
-  var key
-
-  for (key in source) target[key] = source[key]
-
-  return target
-}
-
-},{}],2:[function(require,module,exports){
-'use strict'
-
 var processNodes = require('./process_nodes')
-var assign = require('./assign')
 
 module.exports = defineProperties
 
@@ -64,11 +45,11 @@ function defineProperties (scope, obj, def, parentNode, parentObj) {
     var branch = def[key]
     var mutator = branch.mutator
     var definition = branch.definition
-    var context = { object: obj, key: key }
 
     // Keeping state in this closure.
     var activeNodes = []
     var previousValues = []
+    var isArray
 
     Object.defineProperty(obj, key, {
       get: getter, set: setter, enumerable: true
@@ -82,16 +63,11 @@ function defineProperties (scope, obj, def, parentNode, parentObj) {
     }
 
     function setter (x) {
-      var i, j
+      var i, j, value
 
       // Special case for binding same node as parent.
       if (branch.__isBoundToParent) {
-        if (mutator) mutator(assign({
-          node: parentNode,
-          value: x,
-          previousValue: store[key]
-          // Note that index is omitted.
-        }, context))
+        if (mutator) mutator(parentNode, x, store[key], void 0)
 
         // Need to qualify this check for non-empty value.
         else if (definition && x != null)
@@ -101,41 +77,42 @@ function defineProperties (scope, obj, def, parentNode, parentObj) {
         return null
       }
 
-      store[key] = x
-
-      if (!Array.isArray(x)) x = [ x ]
+      isArray = Array.isArray(x)
+      value = isArray ? x : [ x ]
 
       // Assign custom mutator methods on the array instance.
-      else if (!x.__hasMutators) {
-        x.__hasMutators = true
+      if (isArray && !value.__hasMutators) {
+        value.__hasMutators = true
 
         // These mutators preserve length.
-        x.reverse = reverse
-        x.sort = sort
-        x.copyWithin = copyWithin
-        x.fill = fill
+        value.reverse = reverse
+        value.sort = sort
+        value.copyWithin = copyWithin
+        value.fill = fill
 
         // These mutators may alter length.
-        x.pop = pop
-        x.push = push
-        x.shift = shift
-        x.unshift = unshift
-        x.splice = splice
+        value.pop = pop
+        value.push = push
+        value.shift = shift
+        value.unshift = unshift
+        value.splice = splice
 
         // Handle array index assignment.
-        for (i = 0, j = x.length; i < j; i++) defineIndex(x, i)
+        for (i = 0, j = value.length; i < j; i++) defineIndex(value, i)
       }
 
       // Handle rendering to the DOM.
-      for (i = 0, j = Math.max(previousValues.length, x.length); i < j; i++)
-        checkValue(x, i)
+      for (i = 0, j = Math.max(previousValues.length, value.length);
+        i < j; i++) checkValue(value, i)
 
       // Reset length to current values, implicitly deleting indices from
       // `previousValues` and `activeNodes` and allowing for garbage
       // collection.
-      previousValues.length = activeNodes.length = x.length
+      previousValues.length = activeNodes.length = value.length
 
-      return store[key]
+      store[key] = x
+
+      return x
     }
 
     function checkValue (array, i) {
@@ -166,12 +143,8 @@ function defineProperties (scope, obj, def, parentNode, parentObj) {
       delete previousValues[i]
 
       if (activeNode) {
-        if (mutator) mutator(assign({
-          node: activeNode,
-          value: null,
-          previousValue: previousValue,
-          index: i
-        }, context))
+        if (mutator)
+          mutator(activeNode, null, previousValue, isArray ? i : void 0)
         branch.marker.parentNode.removeChild(activeNode)
         delete activeNodes[i]
       }
@@ -190,22 +163,12 @@ function defineProperties (scope, obj, def, parentNode, parentObj) {
 
       if (mutator) {
         if (activeNode) {
-          mutator(assign({
-            node: activeNode,
-            value: value,
-            previousValue: previousValue,
-            index: i
-          }, context))
+          mutator(activeNode, value, previousValue, isArray ? i : void 0)
           return null
         }
 
         node = branch.node.cloneNode(true)
-        mutator(assign({
-          node: node,
-          value: value,
-          previousValue: previousValue,
-          index: i
-        }, context))
+        mutator(node, value, previousValue, isArray ? i : void 0)
       }
 
       else if (definition) {
@@ -318,7 +281,7 @@ function defineProperties (scope, obj, def, parentNode, parentObj) {
   }
 }
 
-},{"./assign":1,"./process_nodes":5}],3:[function(require,module,exports){
+},{"./process_nodes":4}],2:[function(require,module,exports){
 'use strict'
 
 module.exports = findNodes
@@ -354,7 +317,7 @@ function findNodes (scope, node, def) {
   return map
 }
 
-},{}],4:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 'use strict'
 
 var processNodes = require('./process_nodes')
@@ -468,29 +431,9 @@ function bind (obj, def) {
 
 // Default DOM mutation functions.
 
-function replaceText (context) {
-  context.node.textContent = context.value
-}
-
-function replaceValue (context) {
-  if (context.previousValue === null)
-    context.node.addEventListener('input', function () {
-      context.object[context.key] = context.node.value
-    })
-
-  if (context.node.value !== context.value)
-    context.node.value = context.value
-}
-
-function replaceChecked (context) {
-  if (context.previousValue === null)
-    context.node.addEventListener('input', function () {
-      context.object[context.key] = context.node.checked
-    })
-
-  if (context.node.checked !== context.value)
-    context.node.checked = context.value
-}
+function replaceText (node, value) { node.textContent = value }
+function replaceValue (node, value) { node.value = value }
+function replaceChecked (context) { node.checked = context.value }
 
 // Private static property, used for checking parent binding function.
 replaceText.__isDefault =
@@ -505,7 +448,7 @@ function noop (key) {
   }
 }
 
-},{"./define_properties":2,"./process_nodes":5}],5:[function(require,module,exports){
+},{"./define_properties":1,"./process_nodes":4}],4:[function(require,module,exports){
 'use strict'
 
 var findNodes = require('./find_nodes')
@@ -539,9 +482,9 @@ function processNodes (scope, node, def) {
   return node
 }
 
-},{"./find_nodes":3}],6:[function(require,module,exports){
+},{"./find_nodes":2}],5:[function(require,module,exports){
 'use strict'
 
 window.simulacra = require('../lib')
 
-},{"../lib":4}]},{},[6]);
+},{"../lib":3}]},{},[5]);
