@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.9.2
+ * Version 0.10.0
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -272,21 +272,207 @@ function defineProperties (scope, obj, def, parentNode) {
   }
 }
 
-},{"./process_nodes":4}],2:[function(require,module,exports){
+},{"./process_nodes":3}],2:[function(require,module,exports){
 'use strict'
 
-module.exports = findNodes
+var processNodes = require('./process_nodes')
+var defineProperties = require('./define_properties')
+
+module.exports = simulacra
 
 
 /**
- * Find matching DOM nodes on cloned nodes.
+ * Dynamic dispatch function.
+ *
+ * @param {Node|String|Object}
+ * @param {Function|Object}
+ */
+function simulacra (a, b) {
+  var Node = this ? this.Node : window.Node
+
+  if (typeof a === 'string' || a instanceof Node) return define(a, b)
+  if (typeof a === 'object' && a !== null) return bind.call(this, a, b)
+
+  throw new TypeError('First argument must be either ' +
+    'a DOM Node, string, or an Object.')
+}
+
+
+/**
+ * Define a binding.
+ *
+ * @param {Node|String}
+ * @param {Function|Object}
+ */
+function define (node, def) {
+  // Memoize the selected node.
+  var obj = { node: node }
+
+  if (typeof def === 'function')
+    obj.mutator = def
+
+  else if (typeof def === 'object')
+    obj.definition = def
+
+  else if (def !== void 0)
+    throw new TypeError('Second argument must be either ' +
+      'a function or an object.')
+
+  return obj
+}
+
+
+/**
+ * Bind an object to a Node.
+ *
+ * @param {Object}
+ * @param {Object}
+ * @return {Node}
+ */
+function bind (obj, def) {
+  var Node = this ? this.Node : window.Node
+  var document = this ? this.document : window.document
+  var node, query
+
+  if (Array.isArray(obj))
+    throw new TypeError('First argument must be a singular object.')
+
+  if (!def || typeof def.definition !== 'object')
+    throw new TypeError('Top-level binding must be an object.')
+
+  if (!(def.node instanceof Node)) {
+    query = def.node
+    def.node = document.querySelector(query)
+    if (!def.node) throw new Error(
+      'Top-level Node "' + query + '" could not be found in the document.')
+  }
+
+  ensureNodes(def.node, def.definition, new WeakMap())
+
+  node = processNodes(this, def.node.cloneNode(true), def.definition)
+  defineProperties(this, obj, def.definition, node)
+
+  return node
+}
+
+
+// Default DOM mutation functions.
+function replaceText (node, value) { node.textContent = value }
+function replaceValue (node, value) { node.value = value }
+function replaceChecked (context) { node.checked = context.value }
+
+// Private static property, used for checking parent binding function.
+replaceText.__isDefault =
+  replaceValue.__isDefault =
+  replaceChecked.__isDefault =
+  true
+
+function noop (key) {
+  return function () {
+    console.warn( // eslint-disable-line
+      'Undefined mutator function for key "' + key + '".')
+  }
+}
+
+
+/**
+ * Internal function to mutate string selectors into Nodes and validate that
+ * they are allowed.
+ *
+ * @param {Node} parentNode
+ * @param {Object} def
+ * @param {WeakMap} seen
+ */
+function ensureNodes (parentNode, def, seen) {
+  var key, query, branch, boundNode, ancestorNode
+
+  for (key in def) {
+    branch = def[key]
+
+    if (typeof branch.node === 'string') {
+      query = branch.node
+
+      // May need to get the node above the parent, in case of binding to
+      // the parent node.
+      ancestorNode = parentNode.parentNode || parentNode
+
+      branch.node = ancestorNode.querySelector(query)
+      if (!branch.node) throw new Error(
+        'The Node for selector "' + query + '" was not found.')
+    }
+
+    boundNode = branch.node
+
+    // Special case for binding to parent node.
+    if (parentNode === boundNode) {
+      branch.__isBoundToParent = true
+      if (branch.mutator && branch.mutator.__isDefault)
+        branch.mutator = noop(key)
+      else if (branch.definition)
+        ensureNodes(boundNode, branch.definition, seen)
+      continue
+    }
+
+    if (!parentNode.contains(boundNode))
+      throw new Error('The bound DOM Node must be either ' +
+        'contained in or equal to its parent binding.')
+
+    if (!seen.get(boundNode)) seen.set(boundNode, true)
+    else throw new Error('Can not bind multiple keys to the same child ' +
+      'DOM Node. Collision found on key "' + key + '".')
+
+    if (branch.definition) ensureNodes(boundNode, branch.definition, seen)
+    else if (!branch.mutator)
+      if (boundNode.nodeName === 'INPUT' || boundNode.nodeName === 'SELECT')
+        if (boundNode.type === 'checkbox' || boundNode.type === 'radio')
+          branch.mutator = replaceChecked
+        else branch.mutator = replaceValue
+      else branch.mutator = replaceText
+  }
+}
+
+},{"./define_properties":1,"./process_nodes":3}],3:[function(require,module,exports){
+'use strict'
+
+module.exports = processNodes
+
+
+/**
+ * Internal function to remove bound nodes and replace them with markers.
+ *
+ * @param {*}
+ * @param {Node}
+ * @param {Object}
+ * @return {Node}
+ */
+function processNodes (scope, node, def) {
+  var document = scope ? scope.document : window.document
+  var map = matchNodes(scope, node, def)
+  var branch, key, mirrorNode, marker, parent
+
+  for (key in def) {
+    branch = def[key]
+    if (branch.__isBoundToParent) continue
+    mirrorNode = map.get(branch.node)
+    parent = mirrorNode.parentNode
+    marker = document.createTextNode('')
+    branch.marker = parent.insertBefore(marker, mirrorNode)
+    parent.removeChild(mirrorNode)
+  }
+
+  return node
+}
+
+
+/**
+ * Internal function to find matching DOM nodes on cloned nodes.
  *
  * @param {*}
  * @param {Node} node
  * @param {Object} def
  * @return {WeakMap}
  */
-function findNodes (scope, node, def) {
+function matchNodes (scope, node, def) {
   var document = scope ? scope.document : window.document
   var NodeFilter = scope ? scope.NodeFilter : window.NodeFilter
   var treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT)
@@ -308,174 +494,9 @@ function findNodes (scope, node, def) {
   return map
 }
 
-},{}],3:[function(require,module,exports){
-'use strict'
-
-var processNodes = require('./process_nodes')
-var defineProperties = require('./define_properties')
-
-module.exports = simulacra
-
-simulacra.define = define
-simulacra.bind = bind
-
-
-/**
- * Dynamic dispatch function.
- *
- * @param {Node|Object}
- * @param {Function|Object}
- */
-function simulacra (a, b) {
-  var Node = this ? this.Node : window.Node
-
-  if (a instanceof Node) return define(a, b)
-  if (typeof a === 'object' && a !== null) return bind.call(this, a, b)
-
-  throw new TypeError('First argument must be either ' +
-    'a DOM Node or an Object.')
-}
-
-
-/**
- * Define a binding.
- *
- * @param {Node}
- * @param {Function|Object}
- */
-function define (node, def) {
-  // Memoize the selected node.
-  var obj = { node: node }
-
-  // Although WeakSet would work here, WeakMap has better browser support.
-  var seen = new WeakMap()
-
-  var key, branch, boundNode
-
-  if (typeof def === 'function')
-    obj.mutator = def
-
-  else if (typeof def === 'object') {
-    obj.definition = def
-
-    for (key in def) {
-      branch = def[key]
-      boundNode = branch.node
-
-      // Special case for binding to parent node.
-      if (node === boundNode) {
-        branch.__isBoundToParent = true
-        if (branch.mutator && branch.mutator.__isDefault)
-          branch.mutator = noop(key)
-        continue
-      }
-
-      if (!node.contains(boundNode))
-        throw new Error('The bound DOM Node must be either ' +
-          'contained in or equal to its parent binding.')
-
-      if (!seen.get(boundNode)) seen.set(boundNode, true)
-      else throw new Error('Can not bind multiple keys to the same child ' +
-        'DOM Node. Collision found on key "' + key + '".')
-    }
-  }
-
-  else if (def === void 0)
-    if (node.nodeName === 'INPUT' || node.nodeName === 'SELECT')
-      if (node.type === 'checkbox' || node.type === 'radio')
-        obj.mutator = replaceChecked
-      else obj.mutator = replaceValue
-    else obj.mutator = replaceText
-
-  else throw new TypeError('Second argument must be either ' +
-    'a function or an object.')
-
-  return obj
-}
-
-
-/**
- * Bind an object to a Node.
- *
- * @param {Object}
- * @param {Object}
- * @return {Node}
- */
-function bind (obj, def) {
-  var Node = this ? this.Node : window.Node, node
-
-  if (Array.isArray(obj))
-    throw new TypeError('First argument must be a singular object.')
-
-  if (!(def.node instanceof Node))
-    throw new TypeError('Top-level binding must have a Node.')
-
-  if (typeof def.definition !== 'object')
-    throw new TypeError('Top-level binding must be an object.')
-
-  node = processNodes(this, def.node.cloneNode(true), def.definition)
-  defineProperties(this, obj, def.definition, node)
-
-  return node
-}
-
-
-// Default DOM mutation functions.
-
-function replaceText (node, value) { node.textContent = value }
-function replaceValue (node, value) { node.value = value }
-function replaceChecked (context) { node.checked = context.value }
-
-// Private static property, used for checking parent binding function.
-replaceText.__isDefault =
-  replaceValue.__isDefault =
-  replaceChecked.__isDefault =
-  true
-
-function noop (key) {
-  return function () {
-    console.warn( // eslint-disable-line
-      'Undefined mutator function for key "' + key + '".')
-  }
-}
-
-},{"./define_properties":1,"./process_nodes":4}],4:[function(require,module,exports){
-'use strict'
-
-var findNodes = require('./find_nodes')
-
-module.exports = processNodes
-
-
-/**
- * Internal function to remove bound nodes and replace them with markers.
- *
- * @param {*}
- * @param {Node}
- * @param {Object}
- * @return {Node}
- */
-function processNodes (scope, node, def) {
-  var document = scope ? scope.document : window.document
-  var map = findNodes(scope, node, def)
-  var branch, key, mirrorNode, marker, parent
-
-  for (key in def) {
-    branch = def[key]
-    if (branch.__isBoundToParent) continue
-    mirrorNode = map.get(branch.node)
-    parent = mirrorNode.parentNode
-    marker = document.createTextNode('')
-    branch.marker = parent.insertBefore(marker, mirrorNode)
-    parent.removeChild(mirrorNode)
-  }
-
-  return node
-}
-
-},{"./find_nodes":2}],5:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 'use strict'
 
 window.simulacra = require('../lib')
 
-},{"../lib":3}]},{},[5]);
+},{"../lib":2}]},{},[4]);
