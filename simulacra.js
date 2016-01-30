@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.10.0
+ * Version 0.10.1
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -9,7 +9,7 @@
 
 var processNodes = require('./process_nodes')
 
-module.exports = defineProperties
+module.exports = bindKeys
 
 
 /**
@@ -20,16 +20,16 @@ module.exports = defineProperties
  * @param {Object} def
  * @param {Node} parentNode
  */
-function defineProperties (scope, obj, def, parentNode) {
+function bindKeys (scope, obj, def, parentNode) {
   // Using the closure here to store private object.
   var store = {}
-  var property
+  var key
 
   if (typeof obj !== 'object')
     throw new TypeError(
       'Invalid type of value "' + obj + '", object expected.')
 
-  for (property in def) define(property)
+  for (key in def) define(key)
 
   function define (key) {
     var initialValue = obj[key]
@@ -62,7 +62,7 @@ function defineProperties (scope, obj, def, parentNode) {
 
         // Need to qualify this check for non-empty value.
         else if (definition && x != null)
-          defineProperties(scope, x, definition, parentNode)
+          bindKeys(scope, x, definition, parentNode)
 
         store[key] = x
         return null
@@ -165,7 +165,7 @@ function defineProperties (scope, obj, def, parentNode) {
       else if (definition) {
         if (activeNode) removeNode(value, previousValue, i)
         node = processNodes(scope, branch.node.cloneNode(true), definition, i)
-        defineProperties(scope, value, definition, node)
+        bindKeys(scope, value, definition, node)
       }
 
       // Find the next node.
@@ -276,7 +276,7 @@ function defineProperties (scope, obj, def, parentNode) {
 'use strict'
 
 var processNodes = require('./process_nodes')
-var defineProperties = require('./define_properties')
+var bindKeys = require('./bind_keys')
 
 module.exports = simulacra
 
@@ -350,7 +350,7 @@ function bind (obj, def) {
   ensureNodes(def.node, def.definition, new WeakMap())
 
   node = processNodes(this, def.node.cloneNode(true), def.definition)
-  defineProperties(this, obj, def.definition, node)
+  bindKeys(this, obj, def.definition, node)
 
   return node
 }
@@ -431,7 +431,7 @@ function ensureNodes (parentNode, def, seen) {
   }
 }
 
-},{"./define_properties":1,"./process_nodes":3}],3:[function(require,module,exports){
+},{"./bind_keys":1,"./process_nodes":3}],3:[function(require,module,exports){
 'use strict'
 
 module.exports = processNodes
