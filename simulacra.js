@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.10.1
+ * Version 0.10.3
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -148,14 +148,17 @@ function bindKeys (scope, obj, def, parentNode) {
       if (previousValue === void 0) previousValue = null
 
       // If value is undefined or null, just remove it.
-      if (value == null) return removeNode(null, previousValue, i)
+      if (value == null) {
+        removeNode(null, previousValue, i)
+        return
+      }
 
       previousValues[i] = value
 
       if (mutator) {
         if (activeNode) {
           mutator(activeNode, value, previousValue, isArray ? i : void 0)
-          return null
+          return
         }
 
         node = branch.node.cloneNode(true)
@@ -347,7 +350,7 @@ function bind (obj, def) {
       'Top-level Node "' + query + '" could not be found in the document.')
   }
 
-  ensureNodes(def.node, def.definition, new WeakMap())
+  ensureNodes(def.node, def.definition)
 
   node = processNodes(this, def.node.cloneNode(true), def.definition)
   bindKeys(this, obj, def.definition, node)
@@ -381,10 +384,10 @@ function noop (key) {
  *
  * @param {Node} parentNode
  * @param {Object} def
- * @param {WeakMap} seen
  */
-function ensureNodes (parentNode, def, seen) {
-  var key, query, branch, boundNode, ancestorNode
+function ensureNodes (parentNode, def) {
+  var i, j, key, query, branch, boundNode, ancestorNode
+  var adjacentNodes = []
 
   for (key in def) {
     branch = def[key]
@@ -409,25 +412,34 @@ function ensureNodes (parentNode, def, seen) {
       if (branch.mutator && branch.mutator.__isDefault)
         branch.mutator = noop(key)
       else if (branch.definition)
-        ensureNodes(boundNode, branch.definition, seen)
+        ensureNodes(boundNode, branch.definition)
       continue
     }
+    else adjacentNodes.push([ key, boundNode ])
 
     if (!parentNode.contains(boundNode))
       throw new Error('The bound DOM Node must be either ' +
         'contained in or equal to its parent binding.')
 
-    if (!seen.get(boundNode)) seen.set(boundNode, true)
-    else throw new Error('Can not bind multiple keys to the same child ' +
-      'DOM Node. Collision found on key "' + key + '".')
-
-    if (branch.definition) ensureNodes(boundNode, branch.definition, seen)
+    if (branch.definition) ensureNodes(boundNode, branch.definition)
     else if (!branch.mutator)
       if (boundNode.nodeName === 'INPUT' || boundNode.nodeName === 'SELECT')
         if (boundNode.type === 'checkbox' || boundNode.type === 'radio')
           branch.mutator = replaceChecked
         else branch.mutator = replaceValue
       else branch.mutator = replaceText
+  }
+
+  // Need to invalidate containment in adjacent nodes, after the adjacent
+  // nodes are found.
+  for (key in def) {
+    boundNode = def[key].node
+    for (i = 0, j = adjacentNodes.length; i < j; i++) {
+      if (adjacentNodes[i][1].contains(boundNode) &&
+        adjacentNodes[i][1] !== boundNode)
+        throw new Error('The Node for key "' + key + '" is contained in the ' +
+          'Node for the adjacent key "' + adjacentNodes[i][0] + '".')
+    }
   }
 }
 
