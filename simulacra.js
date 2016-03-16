@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.10.3
+ * Version 0.11.0
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -19,8 +19,9 @@ module.exports = bindKeys
  * @param {Object} obj
  * @param {Object} def
  * @param {Node} parentNode
+ * @param {Array} path
  */
-function bindKeys (scope, obj, def, parentNode) {
+function bindKeys (scope, obj, def, parentNode, path) {
   // Using the closure here to store private object.
   var store = {}
   var key
@@ -38,9 +39,13 @@ function bindKeys (scope, obj, def, parentNode) {
     var definition = branch.definition
 
     // Keeping state in this closure.
+    var keyPath = path.concat(key)
     var activeNodes = []
     var previousValues = []
     var isArray
+
+    // Assign root object.
+    keyPath.root = path.root
 
     Object.defineProperty(obj, key, {
       get: getter, set: setter, enumerable: true
@@ -58,11 +63,11 @@ function bindKeys (scope, obj, def, parentNode) {
 
       // Special case for binding same node as parent.
       if (branch.__isBoundToParent) {
-        if (mutator) mutator(parentNode, x, store[key], void 0)
+        if (mutator) mutator(parentNode, x, store[key], keyPath)
 
         // Need to qualify this check for non-empty value.
         else if (definition && x != null)
-          bindKeys(scope, x, definition, parentNode)
+          bindKeys(scope, x, definition, parentNode, keyPath)
 
         store[key] = x
         return null
@@ -127,6 +132,7 @@ function bindKeys (scope, obj, def, parentNode) {
 
     function removeNode (value, previousValue, i) {
       var activeNode = activeNodes[i]
+      var endPath = keyPath
 
       // Cast previous value to null if undefined.
       if (previousValue === void 0) previousValue = null
@@ -134,8 +140,13 @@ function bindKeys (scope, obj, def, parentNode) {
       delete previousValues[i]
 
       if (activeNode) {
-        if (mutator)
-          mutator(activeNode, null, previousValue, isArray ? i : void 0)
+        if (mutator) {
+          if (isArray) {
+            endPath = keyPath.concat(i)
+            endPath.root = path.root
+          }
+          mutator(activeNode, null, previousValue, endPath)
+        }
         branch.marker.parentNode.removeChild(activeNode)
         delete activeNodes[i]
       }
@@ -143,6 +154,7 @@ function bindKeys (scope, obj, def, parentNode) {
 
     function addNode (value, previousValue, i) {
       var j, k, node, nextNode, activeNode = activeNodes[i]
+      var endPath = keyPath
 
       // Cast previous value to null if undefined.
       if (previousValue === void 0) previousValue = null
@@ -153,22 +165,27 @@ function bindKeys (scope, obj, def, parentNode) {
         return
       }
 
+      if (isArray) {
+        endPath = keyPath.concat(i)
+        endPath.root = path.root
+      }
+
       previousValues[i] = value
 
       if (mutator) {
         if (activeNode) {
-          mutator(activeNode, value, previousValue, isArray ? i : void 0)
+          mutator(activeNode, value, previousValue, endPath)
           return
         }
 
         node = branch.node.cloneNode(true)
-        mutator(node, value, previousValue, isArray ? i : void 0)
+        mutator(node, value, previousValue, endPath)
       }
 
       else if (definition) {
         if (activeNode) removeNode(value, previousValue, i)
         node = processNodes(scope, branch.node.cloneNode(true), definition, i)
-        bindKeys(scope, value, definition, node)
+        bindKeys(scope, value, definition, node, endPath)
       }
 
       // Find the next node.
@@ -335,7 +352,7 @@ function define (node, def) {
 function bind (obj, def) {
   var Node = this ? this.Node : window.Node
   var document = this ? this.document : window.document
-  var node, query
+  var node, query, path = []
 
   if (Array.isArray(obj))
     throw new TypeError('First argument must be a singular object.')
@@ -353,7 +370,11 @@ function bind (obj, def) {
   ensureNodes(def.node, def.definition)
 
   node = processNodes(this, def.node.cloneNode(true), def.definition)
-  bindKeys(this, obj, def.definition, node)
+
+  // Assign root object.
+  path.root = obj
+
+  bindKeys(this, obj, def.definition, node, path)
 
   return node
 }
