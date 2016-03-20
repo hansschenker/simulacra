@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.11.0
+ * Version 0.12.0
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -133,6 +133,7 @@ function bindKeys (scope, obj, def, parentNode, path) {
     function removeNode (value, previousValue, i) {
       var activeNode = activeNodes[i]
       var endPath = keyPath
+      var returnValue
 
       // Cast previous value to null if undefined.
       if (previousValue === void 0) previousValue = null
@@ -145,9 +146,14 @@ function bindKeys (scope, obj, def, parentNode, path) {
             endPath = keyPath.concat(i)
             endPath.root = path.root
           }
-          mutator(activeNode, null, previousValue, endPath)
+          returnValue = mutator(activeNode, null, previousValue, endPath)
         }
-        branch.marker.parentNode.removeChild(activeNode)
+
+        // If a mutator function returns a non-undefined value, skip the call
+        // to the DOM.
+        if (returnValue === void 0)
+          branch.marker.parentNode.removeChild(activeNode)
+
         delete activeNodes[i]
       }
     }
