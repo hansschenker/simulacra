@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.13.0
+ * Version 0.13.2
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -305,6 +305,10 @@ var bindKeys = require('./bind_keys')
 
 module.exports = simulacra
 
+// Expose the internal functions so that dynamic dispatch isn't required.
+simulacra.defineBinding = defineBinding
+simulacra.bindObject = bindObject
+
 
 /**
  * Dynamic dispatch function.
@@ -315,8 +319,8 @@ module.exports = simulacra
 function simulacra (a, b) {
   var Node = this ? this.Node : window.Node
 
-  if (typeof a === 'string' || a instanceof Node) return define(a, b)
-  if (typeof a === 'object' && a !== null) return bind.call(this, a, b)
+  if (typeof a === 'string' || a instanceof Node) return defineBinding(a, b)
+  if (typeof a === 'object' && a !== null) return bindObject.call(this, a, b)
 
   throw new TypeError('First argument must be either ' +
     'a DOM Node, string, or an Object.')
@@ -329,7 +333,7 @@ function simulacra (a, b) {
  * @param {Node|String}
  * @param {Function|Object}
  */
-function define (node, def) {
+function defineBinding (node, def) {
   // Memoize the selected node.
   var obj = { node: node }
 
@@ -354,7 +358,7 @@ function define (node, def) {
  * @param {Object}
  * @return {Node}
  */
-function bind (obj, def) {
+function bindObject (obj, def) {
   var Node = this ? this.Node : window.Node
   var document = this ? this.document : window.document
   var node, query, path = []
