@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.13.2
+ * Version 0.14.0
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -303,11 +303,23 @@ function bindKeys (scope, obj, def, parentNode, path) {
 var processNodes = require('./process_nodes')
 var bindKeys = require('./bind_keys')
 
+var useCommentNode = false
+
 module.exports = simulacra
 
 // Expose the internal functions so that dynamic dispatch isn't required.
 simulacra.defineBinding = defineBinding
 simulacra.bindObject = bindObject
+
+// Option to use comment nodes.
+processNodes.useCommentNode = useCommentNode
+Object.defineProperty(simulacra, 'useCommentNode', {
+  get: function () { return useCommentNode },
+  set: function (value) {
+    processNodes.useCommentNode = useCommentNode = value
+  },
+  enumerable: true
+})
 
 
 /**
@@ -489,15 +501,23 @@ module.exports = processNodes
 function processNodes (scope, node, def) {
   var document = scope ? scope.document : window.document
   var map = matchNodes(scope, node, def)
-  var branch, key, mirrorNode, marker, parent
+  var branch, key, mirrorNode, parent
 
   for (key in def) {
     branch = def[key]
     if (branch.__isBoundToParent) continue
     mirrorNode = map.get(branch.node)
     parent = mirrorNode.parentNode
-    marker = document.createTextNode('')
-    branch.marker = parent.insertBefore(marker, mirrorNode)
+
+    if (processNodes.useCommentNode) {
+      branch.marker = parent.insertBefore(
+        document.createComment(' end "' + key + '" '), mirrorNode)
+      parent.insertBefore(document.createComment(
+        ' begin "' + key + '" '), branch.marker)
+    }
+    else branch.marker = parent.insertBefore(
+      document.createTextNode(''), mirrorNode)
+
     parent.removeChild(mirrorNode)
   }
 
