@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.14.0
+ * Version 0.14.1
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -78,7 +78,7 @@ function bindKeys (scope, obj, def, parentNode, path) {
 
       // Assign custom mutator methods on the array instance.
       if (isArray && !value.__hasMutators) {
-        value.__hasMutators = true
+        Object.defineProperty(value, '__hasMutators', { value: true })
 
         // These mutators preserve length.
         value.reverse = reverse
@@ -407,10 +407,10 @@ function replaceValue (node, value) { node.value = value }
 function replaceChecked (context) { node.checked = context.value }
 
 // Private static property, used for checking parent binding function.
-replaceText.__isDefault =
-  replaceValue.__isDefault =
-  replaceChecked.__isDefault =
-  true
+Object.defineProperty(replaceText, '__isDefault', { value: true })
+Object.defineProperty(replaceValue, '__isDefault', { value: true })
+Object.defineProperty(replaceChecked, '__isDefault', { value: true })
+
 
 function noop (key) {
   return function () {
@@ -450,7 +450,7 @@ function ensureNodes (parentNode, def) {
 
     // Special case for binding to parent node.
     if (parentNode === boundNode) {
-      branch.__isBoundToParent = true
+      Object.defineProperty(branch, '__isBoundToParent', { value: true })
       if (branch.mutator && branch.mutator.__isDefault)
         branch.mutator = noop(key)
       else if (branch.definition)
