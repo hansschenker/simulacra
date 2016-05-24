@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.14.1
+ * Version 0.15.0
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -44,8 +44,9 @@ function bindKeys (scope, obj, def, parentNode, path) {
     var previousValues = []
     var isArray
 
-    // Assign root object.
+    // Assign root and target object.
     keyPath.root = path.root
+    keyPath.target = obj
 
     Object.defineProperty(obj, key, {
       get: getter, set: setter, enumerable: true
@@ -60,6 +61,8 @@ function bindKeys (scope, obj, def, parentNode, path) {
 
     function setter (x) {
       var i, j, value
+
+      store[key] = x
 
       // Special case for binding same node as parent.
       if (branch.__isBoundToParent) {
@@ -106,8 +109,6 @@ function bindKeys (scope, obj, def, parentNode, path) {
       // collection.
       previousValues.length = activeNodes.length = value.length
 
-      store[key] = x
-
       return x
     }
 
@@ -145,6 +146,7 @@ function bindKeys (scope, obj, def, parentNode, path) {
           if (isArray) {
             endPath = keyPath.concat(i)
             endPath.root = path.root
+            endPath.target = path.target
           }
           returnValue = mutator(activeNode, null, previousValue, endPath)
         }
@@ -173,6 +175,7 @@ function bindKeys (scope, obj, def, parentNode, path) {
       if (isArray) {
         endPath = keyPath.concat(i)
         endPath.root = path.root
+        endPath.target = path.target
       }
 
       previousValues[i] = value
@@ -190,6 +193,7 @@ function bindKeys (scope, obj, def, parentNode, path) {
       else if (definition) {
         if (activeNode) removeNode(value, previousValue, i)
         node = processNodes(scope, branch.node.cloneNode(true), definition, i)
+        endPath.target = i ? value[i] : value
         bindKeys(scope, value, definition, node, endPath)
       }
 
