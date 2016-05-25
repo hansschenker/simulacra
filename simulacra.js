@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.15.0
+ * Version 0.15.1
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -193,7 +193,7 @@ function bindKeys (scope, obj, def, parentNode, path) {
       else if (definition) {
         if (activeNode) removeNode(value, previousValue, i)
         node = processNodes(scope, branch.node.cloneNode(true), definition, i)
-        endPath.target = i ? value[i] : value
+        endPath.target = isArray ? value[i] : value
         bindKeys(scope, value, definition, node, endPath)
       }
 
