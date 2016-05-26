@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.15.1
+ * Version 0.16.0
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -36,6 +36,7 @@ function bindKeys (scope, obj, def, parentNode, path) {
     var initialValue = obj[key]
     var branch = def[key]
     var mutator = branch.mutator
+    var mount = branch.mount
     var definition = branch.definition
 
     // Keeping state in this closure.
@@ -60,22 +61,23 @@ function bindKeys (scope, obj, def, parentNode, path) {
     }
 
     function setter (x) {
-      var i, j, value
-
-      store[key] = x
+      var i, j, value, previousValue
 
       // Special case for binding same node as parent.
       if (branch.__isBoundToParent) {
-        if (mutator) mutator(parentNode, x, store[key], keyPath)
+        previousValue = store[key]
+        store[key] = x
 
         // Need to qualify this check for non-empty value.
-        else if (definition && x != null)
+        if (definition && x != null)
           bindKeys(scope, x, definition, parentNode, keyPath)
 
-        store[key] = x
+        else if (mutator) mutator(parentNode, x, previousValue, keyPath)
+
         return null
       }
 
+      store[key] = x
       isArray = Array.isArray(x)
       value = isArray ? x : [ x ]
 
@@ -134,7 +136,7 @@ function bindKeys (scope, obj, def, parentNode, path) {
     function removeNode (value, previousValue, i) {
       var activeNode = activeNodes[i]
       var endPath = keyPath
-      var returnValue
+      var returnValue, j
 
       // Cast previous value to null if undefined.
       if (previousValue === void 0) previousValue = null
@@ -142,16 +144,24 @@ function bindKeys (scope, obj, def, parentNode, path) {
       delete previousValues[i]
 
       if (activeNode) {
-        if (mutator) {
-          if (isArray) {
-            endPath = keyPath.concat(i)
-            endPath.root = path.root
-            endPath.target = path.target
-          }
-          returnValue = mutator(activeNode, null, previousValue, endPath)
+        if (isArray) {
+          endPath = keyPath.concat(i)
+          endPath.root = path.root
+          endPath.target = path.target
         }
 
-        // If a mutator function returns false, skip the DOM operation.
+        if (mutator)
+          returnValue = mutator(activeNode, null, previousValue, endPath)
+        else if (definition && mount) {
+          endPath.target = endPath.root
+
+          for (j = 0; j < keyPath.length - 1; j++)
+            endPath.target = endPath.target[keyPath[j]]
+
+          returnValue = mount(activeNode, null, endPath)
+        }
+
+        // If a mutator function returns false, skip removing from DOM.
         if (returnValue !== false)
           branch.marker.parentNode.removeChild(activeNode)
 
@@ -180,21 +190,29 @@ function bindKeys (scope, obj, def, parentNode, path) {
 
       previousValues[i] = value
 
-      if (mutator) {
-        if (activeNode) {
-          mutator(activeNode, value, previousValue, endPath)
-          return
-        }
-
-        node = branch.node.cloneNode(true)
-        mutator(node, value, previousValue, endPath)
-      }
-
-      else if (definition) {
+      if (definition) {
         if (activeNode) removeNode(value, previousValue, i)
         node = processNodes(scope, branch.node.cloneNode(true), definition, i)
         endPath.target = isArray ? value[i] : value
         bindKeys(scope, value, definition, node, endPath)
+        if (mount) {
+          endPath.target = endPath.root
+
+          for (j = 0; j < keyPath.length - 1; j++)
+            endPath.target = endPath.target[keyPath[j]]
+
+          mount(node, value, endPath)
+        }
+      }
+
+      else if (mutator) {
+        if (activeNode) {
+          mutator(activeNode, value, definition ? null : previousValue, endPath)
+          return
+        }
+
+        if (!definition) node = branch.node.cloneNode(true)
+        mutator(node, value, previousValue, endPath)
       }
 
       // Find the next node.
@@ -331,11 +349,12 @@ Object.defineProperty(simulacra, 'useCommentNode', {
  *
  * @param {Node|String|Object}
  * @param {Function|Object}
+ * @param {Function}
  */
-function simulacra (a, b) {
+function simulacra (a, b, c) {
   var Node = this ? this.Node : window.Node
 
-  if (typeof a === 'string' || a instanceof Node) return defineBinding(a, b)
+  if (typeof a === 'string' || a instanceof Node) return defineBinding(a, b, c)
   if (typeof a === 'object' && a !== null) return bindObject.call(this, a, b)
 
   throw new TypeError('First argument must be either ' +
@@ -348,18 +367,23 @@ function simulacra (a, b) {
  *
  * @param {Node|String}
  * @param {Function|Object}
+ * @param {Function}
  */
-function defineBinding (node, def) {
+function defineBinding (node, a, b) {
   // Memoize the selected node.
   var obj = { node: node }
 
-  if (typeof def === 'function')
-    obj.mutator = def
+  if (typeof a === 'function')
+    obj.mutator = a
 
-  else if (typeof def === 'object')
-    obj.definition = def
+  else if (typeof a === 'object') {
+    obj.definition = a
+    if (b !== void 0)
+      if (typeof b === 'function') obj.mount = b
+      else throw new TypeError('Third argument must be a function.')
+  }
 
-  else if (def !== void 0)
+  else if (a !== void 0)
     throw new TypeError('Second argument must be either ' +
       'a function or an object.')
 
@@ -370,8 +394,8 @@ function defineBinding (node, def) {
 /**
  * Bind an object to a Node.
  *
- * @param {Object}
- * @param {Object}
+ * @param {Object} obj
+ * @param {Object} def
  * @return {Node}
  */
 function bindObject (obj, def) {
@@ -497,9 +521,9 @@ module.exports = processNodes
 /**
  * Internal function to remove bound nodes and replace them with markers.
  *
- * @param {*}
- * @param {Node}
- * @param {Object}
+ * @param {*} scope
+ * @param {Node} node
+ * @param {Object} def
  * @return {Node}
  */
 function processNodes (scope, node, def) {
@@ -532,7 +556,7 @@ function processNodes (scope, node, def) {
 /**
  * Internal function to find matching DOM nodes on cloned nodes.
  *
- * @param {*}
+ * @param {*} scope
  * @param {Node} node
  * @param {Object} def
  * @return {WeakMap}
