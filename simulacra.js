@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 0.16.0
+ * Version 0.16.1
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -207,11 +207,11 @@ function bindKeys (scope, obj, def, parentNode, path) {
 
       else if (mutator) {
         if (activeNode) {
-          mutator(activeNode, value, definition ? null : previousValue, endPath)
+          mutator(activeNode, value, previousValue, endPath)
           return
         }
 
-        if (!definition) node = branch.node.cloneNode(true)
+        node = branch.node.cloneNode(true)
         mutator(node, value, previousValue, endPath)
       }
 
